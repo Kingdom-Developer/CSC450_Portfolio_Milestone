@@ -1,0 +1,81 @@
+/*
+ * Program that uses one thread to counts up to 20, then triggers a second thread that counts back down to 0.
+ */
+
+DECLARE CONDITION VARIABLE cv
+DECLARE MUTEX mtx
+DECLARE int shared_integer = 0
+DECLARE bool thread1_completed = FALSE
+
+/*
+ * Method used by thread1 to count up to 'max'
+ */
+METHOD countUp(int max)
+    OUTPUT "Thread 1: " + NEWLINE
+    
+    // Loop through to print value of shared_integer and increment it
+    FOR i FROM 0 UP TO max DO
+        // Lock the mutex to prevent race
+        LOCK mtx
+    
+        // Output shared_integer (the current count value)
+        OUTPUT shared_integer + NEWLINE
+
+        // Ensure last iteration does not increment shared_integer
+        IF i NOT EQUAL max THEN
+            INCREMENT shared_integer
+        
+        // If last iteration, update thread1_completed to true
+        ELSE
+            thread1_completed = TRUE
+        END IF
+    END FOR
+    
+    // Notify thread2 that thread1 is finished
+    NOTIFY thread2 THAT thread1 IS DONE
+END METHOD
+
+/*
+ * Method used by thread2 to count down from 'shared_integer' to 'min'
+ */
+METHOD countDown(int min)
+    // Create unique_lock
+    LOCK mtx
+
+    // Ensure that thread2 waits for thread1 to complete
+    WAIT FOR thread1 TO COMPLETE
+
+    // Unlock the mutex
+    UNLOCK mtx
+
+    OUTPUT "Thread 2: " + NEWLINE
+
+    // Loop through to print value of shared_integer and decrement it
+    FOR i FROM shared_integer DOWN TO min DO
+        // Lock the mutex
+        LOCK mtx
+        
+        OUTPUT shared_integer + NEWLINE
+        DECREMENT shared_integer
+
+END METHOD
+
+/*
+ * Main program to have one thread count up to 20 and then have a second thread 
+ * wait for first thread to finish and then count down to 0
+ */
+MAIN METHOD
+    // Create first thread to count up to 20
+    START THREAD thread1 AND RUN countUp(20)
+
+    // Create second thread to count down to 0
+    START THREAD thread2 AND RUN countDown(0)
+
+    // Ensure thread1 finishes before proceeding
+    WAIT FOR thread1 TO COMPLETE
+
+    // Ensure thread2 finishes before proceeding
+    WAIT FOR thread2 TO COMPLETE
+
+    RETURN 0
+END METHOD
